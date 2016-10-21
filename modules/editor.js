@@ -10,16 +10,13 @@ require("codemirror/addon/hint/show-hint.css");
 require("codemirror/addon/hint/anyword-hint.js");
 require("codemirror/addon/selection/active-line.js");
 require("codemirror/addon/comment/comment.js");
-// require("codemirror/addon/tern/tern.js");
-// require("codemirror/addon/tern/tern.css");
+
 
 require("codemirror/mode/javascript/javascript.js");
 require("codemirror/mode/clojure/clojure.js");
 require("codemirror/mode/haskell/haskell.js");
 
 require("./editor/theme.css");
-
-// window.tern = require("tern"); // ;(((
 
 var events = require("../lib/events");
 var text = require("../lib/text");
@@ -55,76 +52,71 @@ function factory(languages) {
     };
 
     this.compile = () => {
-      return this.language.compile(this.cm.getDoc().getValue()).then((compiled) => {
-        this.cm.clearGutter("cm-errors");
-        if (compiled.errors.length) {
-          new Audio(require("./editor/smb_bump.mp3")).play();
-          for (let i = 0; i < compiled.errors.length; i++) {
-            let error = compiled.errors[i];
-            let marker = document.createElement("img");
-            marker.title = error.message;
-            marker.classList.add("cm-error");
-            this.cm.setGutterMarker(error.pos.line, "cm-errors", marker);
-          }
-          this.cm.getDoc().setCursor(compiled.errors[0].pos.line,
-                                     compiled.errors[0].pos.col);
-          return null;
-        } else {
-          return compiled.code;
+      let compiled = this.language.compile(this.cm.getDoc().getValue());
+      this.cm.clearGutter("cm-errors");
+      if (compiled.errors.length) {
+        new Audio(require("./editor/smb_bump.mp3")).play();
+        for (let i = 0; i < compiled.errors.length; i++) {
+          let error = compiled.errors[i];
+          let marker = document.createElement("img");
+          marker.title = error.message;
+          marker.classList.add("cm-error");
+          this.cm.setGutterMarker(error.pos.line, "cm-errors", marker);
         }
-      });
+        this.cm.getDoc().setCursor(compiled.errors[0].pos.line,
+                                   compiled.errors[0].pos.col);
+        return null;
+      } else {
+        return compiled.code;
+      }
     };
 
     this.evalInFrame = (cm) => {
       this.send({hide: true});
       this.spin(true);
-      this.compile().catch((err) => {
-        this.spin(false);
-        console.error(err);
-      }).then((code) => {
-        this.spin(false);
+      let code = this.compile();
+      this.spin(false);
 
-        if (code === null) return;
+      if (code === null) return;
 
-        if (href) {
-          if ((args.reload !== undefined)) {
-            this.targetFrame.src = href;
-            setTimeout((() => {
-              events.until(this.targetFrame.contentWindow, "message", function(e) {
-                if (e.data === "rdy lol") {
-                  this.send({code: code});
-                  return true;
-                }
-              }, this);
-            }).bind(this), 100);
-          } else {
-            this.send({code: code});
-          }
+      if (href) {
+        if ((args.reload !== undefined)) {
+          this.targetFrame.src = href;
+          setTimeout((() => {
+            events.until(this.targetFrame.contentWindow, "message", function(e) {
+              if (e.data === "rdy lol") {
+                this.send({code: code});
+                return true;
+              }
+            }, this);
+          }).bind(this), 100);
         } else {
-          this.language.evalCode(code, (response) => {
-            let splitLines = response.result.map((result) => result.line),
-                splitCode = text.splitLines(code, splitLines),
-                newCode = response.result.map((result, i) => {
-                  if (result.hasOwnProperty("error")) {
-                    return splitCode[i] +
-                      this.language.comment("!! " + result.error) + "\n";
-                  }
-                  if (result.result === null) {
-                    return splitCode[i];
-                  } else {
-                    return splitCode[i] +
-                      this.language.comment("=> " + result.result) + "\n";
-                  }
-                });
-            while (newCode.length < splitCode.length) {
-              newCode.push(splitCode[newCode.length]);
-            }
-            let cursor = this.cm.getDoc().getCursor();
-            this.cm.getDoc().setValue(newCode.join(""));
-            this.cm.getDoc().setCursor(cursor);
-          });
+          this.send({code: code});
         }
-      });
+      } else {
+        this.language.evalCode(code, (response) => {
+          let splitLines = response.result.map((result) => result.line),
+              splitCode = text.splitLines(code, splitLines),
+              newCode = response.result.map((result, i) => {
+                if (result.hasOwnProperty("error")) {
+                  return splitCode[i] +
+                    this.language.comment("!! " + result.error) + "\n";
+                }
+                if (result.result === null) {
+                  return splitCode[i];
+                } else {
+                  return splitCode[i] +
+                    this.language.comment("=> " + result.result) + "\n";
+                }
+              });
+          while (newCode.length < splitCode.length) {
+            newCode.push(splitCode[newCode.length]);
+          }
+          let cursor = this.cm.getDoc().getCursor();
+          this.cm.getDoc().setValue(newCode.join(""));
+          this.cm.getDoc().setCursor(cursor);
+        });
+      }
     };
 
     this.reloadFrame = (cm) => {
@@ -226,23 +218,6 @@ function factory(languages) {
       this.cm = CodeMirror(this.editorFrame, options);
       this.cm.setSize("100%", "100%");
 
-      // if (mode === "text/javascript") {
-      //   let tern = new CodeMirror.TernServer({
-      //     defs: [ require("tern/defs/ecma5.json"),
-      //             require("tern/defs/browser.json"),
-      //             require("./editor/mousetrap.json"),
-      //             require("./editor/rxjs.json") ]
-      //   });
-      //   let ternKeymap = seq.merge(keymap);
-      //   ternKeymap["Ctrl-\\"] = (cm) => tern.complete(cm);
-      //   ternKeymap["Ctrl-I"] = (cm) => tern.showType(cm);
-      //   ternKeymap["Alt-."] = (cm) => tern.jumpToDef(cm);
-      //   ternKeymap["Alt-,"] = (cm) => tern.jumpBack(cm);
-      //   ternKeymap["Ctrl-Q"] = (cm) => tern.rename(cm);
-      //   this.cm.setOption("extraKeys", ternKeymap);
-      //   this.cm.on("cursorActivity", (cm) => tern.updateArgHints(cm));
-      // }
-
       if (args.warmup !== undefined) {
         this.compile(() => {});
       }
@@ -267,14 +242,16 @@ function factory(languages) {
     }
 
     this.spin = (enable) => {
-      if (enable) {
-        this.loaderFrame.style.display = "";
-        this.targetFrame.style.display = "none";
-        this.spinner.spin(this.loaderFrame);
-      } else {
-        this.spinner.stop();
-        this.loaderFrame.style.display = "none";
-        this.targetFrame.style.display = "";
+      if (!!this.loaderFrame) {
+        if (enable) {
+          this.loaderFrame.style.display = "";
+          this.targetFrame.style.display = "none";
+          this.spinner.spin(this.loaderFrame);
+        } else {
+          this.spinner.stop();
+          this.loaderFrame.style.display = "none";
+          this.targetFrame.style.display = "";
+        }
       }
     };
 
@@ -282,7 +259,7 @@ function factory(languages) {
 
     this.cleanup = () => {
       if (this.cleanupHandler) {
-        events.off(this.cleanupHandler);
+        events.off(window, "onunload", this.cleanupHandler);
         this.cleanupHandler = null;
       }
       this.cm = null;
