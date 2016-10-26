@@ -301,8 +301,8 @@ function Deck(container, deckModules) {
     mousetrap.bind(binding, callback.bind(this));
   };
 
-  this.bind(["pageup", "left"], this.previousItem);
-  this.bind(["pagedown", "right"], this.nextItem);
+  //this.bind(["pageup", "left"], this.previousItem);
+  //this.bind(["pagedown", "right"], this.nextItem);
   this.bind(["f9"], this.toggleCheatMode);
 
   this.on("item", (i) => {
